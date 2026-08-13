@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>India Protest Tracker Dashboard (2020–2026)</title>
+    
+    <!-- Leaflet.js Interactive Mapping Library -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --bg-primary: #050505;
+            --bg-card: #121212;
+            --bg-card-hover: #1a1a1a;
+            --accent-red: #ef4444;
+            --accent-dark-red: #991b1b;
+            --accent-glow: #dc2626;
+            --text-light: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-red: #7f1d1d;
+        }
+
+        /* Custom Transparent Police Shield Cursor */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 100 120"><rect x="10" y="10" width="80" height="100" rx="18" fill="%23262626" stroke="%23888888" stroke-width="4"/><rect x="22" y="22" width="56" height="24" rx="6" fill="%23404040" stroke="%23262626" stroke-width="2"/><rect x="28" y="27" width="44" height="14" rx="3" fill="%2371c5e8"/><circle cx="28" cy="18" r="2" fill="%23cccccc"/><circle cx="72" cy="18" r="2" fill="%23cccccc"/><circle cx="28" cy="50" r="2" fill="%23cccccc"/><circle cx="72" cy="50" r="2" fill="%23cccccc"/><rect x="20" y="58" width="60" height="18" fill="%23111111" rx="2"/><text x="50" y="71" font-family="sans-serif" font-weight="900" font-size="11" fill="%23ffffff" text-anchor="middle">POLICE</text></svg>') 18 18, auto !important;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-light);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body.locked {
+            overflow: hidden !important;
+        }
+
+        /* =========================================================================
+           SPLASH BARRICADE GATE (2-TAP INTERACTIVE BREACH)
+           ========================================================================= */
+        .gate-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000000;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+
+        .gate-overlay.opened {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .barricade-wrapper {
+            position: relative;
+            width: 280px;
+            height: 200px;
+            cursor: pointer !important;
+            transition: transform 0.1s ease;
+        }
+
+        .barricade-wrapper:active {
+            transform: scale(0.96);
+        }
+
+        .barricade-part {
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s ease;
+            transform-origin: center;
+        }
+
+        /* Crack Fractures Layer */
+        .crack-line {
+            stroke: #ef4444;
+            stroke-width: 3;
+            stroke-dasharray: 200;
+            stroke-dashoffset: 200;
+            transition: stroke-dashoffset 0.3s ease;
+            filter: drop-shadow(0 0 6px #ff0000);
+        }
+
+        /* State 1: First Tap Cracks */
+        .barricade-wrapper.crack-step-1 .crack-line {
+            stroke-dashoffset: 0;
+        }
+
+        .barricade-wrapper.crack-step-1 {
+            animation: shake 0.3s ease-in-out;
+        }
+
+        /* State 2: Second Tap Breaks Apart */
+        .barricade-wrapper.crack-step-2 .part-left {
+            transform: translate(-60px, 30px) rotate(-25deg);
+            opacity: 0;
+        }
+
+        .barricade-wrapper.crack-step-2 .part-right {
+            transform: translate(60px, 30px) rotate(25deg);
+            opacity: 0;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-8px, 4px) rotate(-3deg); }
+            40% { transform: translate(8px, -4px) rotate(3deg); }
+            60% { transform: translate(-6px, -2px) rotate(-2deg); }
+            80% { transform: translate(6px, 2px) rotate(2deg); }
+        }
+
+        .gate-instruction {
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        .gate-badge {
+            background: var(--accent-dark-red);
+            color: #ffffff;
+            border: 1px solid var(--accent-red);
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+            animation: pulseText 1.5s infinite alternate;
+        }
+
+        @keyframes pulseText {
+            0% { opacity: 0.7; transform: scale(0.98); }
+            100% { opacity: 1; transform: scale(1.02); }
+        }
+
+        .gate-subtext {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-top: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Top Hero Section with Animated Crowd Canvas Background */
+        .hero-container {
+            position: relative;
+            height: 60vh;
+            min-height: 400px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 0 1rem;
+            overflow: hidden;
+            border-bottom: 2px solid var(--border-red);
+        }
+
+        #hero-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            transition: opacity 0.1s ease-out;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 5;
+            max-width: 800px;
+            background: rgba(5, 5, 5, 0.7);
+            padding: 2rem;
+            border-radius: 8px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+        }
+
+        .hero-content h1 {
+            color: #ffffff;
+            font-size: 2.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+            margin-bottom: 0.5rem;
+        }
+
+        .hero-content p {
+            color: var(--text-muted);
+            font-size: 1.05rem;
+        }
+
+        /* Header & Live Status Ticker */
+        header {
+            background-color: #0f0000;
+            color: white;
+            padding: 0.8rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent-dark-red);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .live-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .red-beacon {
+            width: 12px;
+            height: 12px;
+            background-color: #ff0000;
+            border-radius: 50%;
+            box-shadow: 0 0 12px #ff0000;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.3; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* Main Container Layout */
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 3rem 1rem;
+            position: relative;
+            z-index: 10;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            border-bottom: 1px solid var(--border-red);
+            padding-bottom: 1rem;
+        }
+
+        .section-header h2 {
+            color: #ffffff;
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section-header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        /* Metric Grid Cards Area */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 4rem;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-red);
+            border-top: 3px solid var(--accent-red);
+            padding: 1.2rem 1rem;
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent-red);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.2);
+        }
+
+        .metric-value {
+            font-size: 1.6rem;
+            font-weight: 900;
+            color: var(--accent-red);
+            text-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .sync-status {
+            grid-column: span 4;
+            text-align: right;
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: -8px;
+            font-style: italic;
+            font-weight: bold;
+        }
+
+        /* Interactive GIS Map Container */
+        .map-section {
+            margin-bottom: 5rem;
+        }
+
+        #leaflet-map {
+            width: 100%;
+            height: 480px;
+            border-radius: 8px;
+            border: 1px solid var(--border-red);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            background: #0d0d0d;
+        }
+
+        .leaflet-popup-content-wrapper {
+            background: #121212 !important;
+            color: #fff !important;
+            border: 1px solid var(--accent-red) !important;
+            border-radius: 6px !important;
+        }
+
+        .leaflet-popup-tip {
+            background: var(--accent-red) !important;
+        }
+
+        .map-popup-btn {
+            background: var(--accent-dark-red);
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            margin-top: 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            border-radius: 3px;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .map-popup-btn:hover { background: var(--accent-red); }
+
+        /* Timeline Structural Layout */
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 3px;
+            background: linear-gradient(180deg, var(--accent-red) 0%, var(--accent-dark-red) 100%);
+            transform: translateX(-50%);
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+        }
+
+        .timeline-item {
+            margin-bottom: 50px;
+            position: relative;
+            width: 50%;
+            padding: 0 35px;
+        }
+
+        .timeline-item.left { left: 0; text-align: right; }
+        .timeline-item.right { left: 50%; text-align: left; }
+
+        .timeline-node {
+            position: absolute;
+            top: 15px;
+            width: 18px;
+            height: 18px;
+            background-color: var(--bg-primary);
+            border: 3px solid var(--accent-red);
+            border-radius: 50%;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+
+        .timeline-item.left .timeline-node { right: -9px; }
+        .timeline-item.right .timeline-node { left: -9px; }
+
+        .timeline-item:hover .timeline-node {
+            background-color: var(--accent-red);
+            box-shadow: 0 0 12px var(--accent-red);
+            transform: scale(1.3);
+        }
+
+        .timeline-card {
+            background: var(--bg-card);
+            border: 1px solid #262626;
+            border-left: 4px solid var(--accent-red);
+            padding: 1.3rem;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .timeline-item:hover .timeline-card {
+            background: var(--bg-card-hover);
+            transform: translateY(-4px);
+            border-color: var(--accent-red);
+            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.15);
+        }
+
+        .date-badge {
+            display: inline-block;
+            background: var(--accent-dark-red);
+            color: #ffffff;
+            padding: 2px 10px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+            border-radius: 3px;
+        }
+
+        .timeline-card h3 {
+            color: #ffffff;
+            font-size: 1.15rem;
+            margin-bottom: 6px;
+        }
+
+        .location-text {
+            font-size: 0.85rem;
+            color: var(--accent-red);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        /* Modal Overlay Panel */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .overlay-card {
+            background: #0f0f0f;
+            color: var(--text-light);
+            width: 90%;
+            max-width: 750px;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 2rem;
+            position: relative;
+            border: 2px solid var(--accent-red);
+            box-shadow: 0 0 40px rgba(239, 68, 68, 0.25);
+            border-radius: 8px;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: var(--accent-dark-red);
+            color: white;
+            border: none;
+            font-size: 1.5rem;
+            font-weight: bold;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover { background: var(--accent-red); }
+
+        .overlay-image {
+            width: 100%;
+            height: 260px;
+            object-fit: cover;
+            border: 1px solid #333;
+            margin: 1rem 0 0.2rem 0;
+            border-radius: 4px;
+        }
+
+        .caption {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+            font-style: italic;
+        }
+
+        .overlay-body h4 {
+            color: var(--accent-red);
+            margin-top: 1.2rem;
+            border-bottom: 1px solid var(--border-red);
+            padding-bottom: 4px;
+        }
+
+        .overlay-body ul {
+            padding-left: 1.2rem;
+            margin: 0.8rem 0;
+        }
+
+        .overlay-body li { margin-bottom: 0.5rem; }
+
+        .source-link {
+            display: inline-block;
+            margin-top: 1.2rem;
+            color: var(--accent-red);
+            text-decoration: underline;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        /* Tear Gas Trigger Button */
+        #tear-gas-btn {
+            position: fixed;
+            right: 25px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #111;
+            color: white;
+            border: 2px solid var(--accent-red);
+            padding: 12px 14px;
+            border-radius: 50px;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+        }
+
+        #tear-gas-btn:hover {
+            background: var(--accent-dark-red);
+            transform: translateY(-50%) scale(1.08);
+        }
+
+        #gas-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        /* Ambient Animated Protest Elements in Margins */
+        .ambient-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .ambient-item {
+            position: absolute;
+            pointer-events: auto;
+            opacity: 0.7;
+            transition: all 0.4s ease;
+            filter: drop-shadow(0 0 8px rgba(0,0,0,0.8));
+        }
+
+        .ambient-item:hover {
+            opacity: 1;
+            transform: scale(1.15) rotate(5deg);
+        }
+
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-12px) rotate(3deg); }
+        }
+
+        @keyframes sirenFlash {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; filter: drop-shadow(0 0 12px #ff0000); }
+        }
+
+        .float-anim { animation: floatSlow 5s infinite ease-in-out; }
+        .siren-light { animation: sirenFlash 0.8s infinite; }
+
+        @media (max-width: 900px) {
+            .ambient-item { display: none; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .sync-status { grid-column: span 2; }
+        }
+
+        @media (max-width: 550px) {
+            .hero-content h1 { font-size: 2rem; }
+            .metrics-grid { grid-template-columns: 1fr; }
+            .sync-status { grid-column: span 1; }
+            .timeline::before { left: 20px; }
+            .timeline-item { width: 100%; padding-left: 50px; padding-right: 10px; }
+            .timeline-item.left, .timeline-item.right { left: 0; text-align: left; }
+            .timeline-item.left .timeline-node, .timeline-item.right .timeline-node { left: 11px; right: auto; }
+            #tear-gas-btn { right: 10px; top: auto; bottom: 30px; transform: none; }
+        }
+    </style>
+</head>
+<body class="locked">
+
+    <!-- 2-TAP BARRICADE BREACH OVERLAY SPLASH SCREEN -->
+    <div class="gate-overlay" id="gate-screen">
+        <div class="barricade-wrapper" id="barricade-btn" tabindex="0" role="button" aria-label="Tap twice to breach barricade">
+            <svg width="280" height="200" viewBox="0 0 280 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Left Part of Barricade -->
+                <g class="barricade-part part-left">
+                    <rect x="20" y="30" width="115" height="18" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+                    <rect x="20" y="70" width="115" height="18" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+                    <line x1="35" y1="20" x2="35" y2="170" stroke="#888888" stroke-width="8"/>
+                    <line x1="120" y1="20" x2="120" y2="170" stroke="#888888" stroke-width="8"/>
+                    <path d="M 20 170 L 50 195 M 120 170 L 135 195" stroke="#666666" stroke-width="6"/>
+                    <text x="75" y="43" fill="#ffffff" font-size="10" font-weight="bold" text-anchor="middle">STOP</text>
+                    <text x="75" y="83" fill="#ffffff" font-size="9" font-weight="bold" text-anchor="middle">POLICE</text>
+                </g>
+
+                <!-- Right Part of Barricade -->
+                <g class="barricade-part part-right">
+                    <rect x="145" y="30" width="115" height="18" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+                    <rect x="145" y="70" width="115" height="18" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+                    <line x1="160" y1="20" x2="160" y2="170" stroke="#888888" stroke-width="8"/>
+                    <line x1="245" y1="20" x2="245" y2="170" stroke="#888888" stroke-width="8"/>
+                    <path d="M 160 170 L 145 195 M 245 170 L 260 195" stroke="#666666" stroke-width="6"/>
+                    <text x="202" y="43" fill="#ffffff" font-size="10" font-weight="bold" text-anchor="middle">POLICE</text>
+                    <text x="202" y="83" fill="#ffffff" font-size="9" font-weight="bold" text-anchor="middle">BARRICADE</text>
+                </g>
+
+                <!-- Fractures & Crack Overlay (Appears on Tap 1) -->
+                <path class="crack-line" d="M 130 15 L 145 45 L 125 75 L 155 110 L 135 150 L 145 185"/>
+                <path class="crack-line" d="M 135 75 L 90 60"/>
+                <path class="crack-line" d="M 145 110 L 190 125"/>
+            </svg>
+        </div>
+
+        <div class="gate-instruction">
+            <div class="gate-badge" id="gate-text">TAP BARRICADE TO BREACH (0/2)</div>
+            <div class="gate-subtext">Restricted Area | Verified Archive Entry</div>
+        </div>
+    </div>
+
+    <!-- Hero Banner with Animated Protester Crowd Background -->
+    <div class="hero-container">
+        <canvas id="hero-canvas"></canvas>
+        <div class="hero-content">
+            <h1>India Protest Dashboard</h1>
+            <p>A non-partisan, cross-verified archive of major civil demonstrations, policy movements, and outcomes across India (2020–2026).</p>
+        </div>
+    </div>
+
+    <!-- Sticky Header Ticker -->
+    <header>
+        <div class="live-status">
+            <div class="red-beacon"></div>
+            <span>LIVE TRACKER | VERIFIED ARCHIVE (2020–2026)</span>
+        </div>
+        <div style="font-size:0.8rem; font-weight: bold; color: var(--accent-red);">INDIA POLICY & PROTEST DESK</div>
+    </header>
+
+    <!-- Ambient Layer: Animated Protest Graphics in Margins -->
+    <div class="ambient-layer">
+        <div class="ambient-item float-anim" style="top: 750px; left: 3%;">
+            <svg width="90" height="110" viewBox="0 0 100 120">
+                <rect x="45" y="60" width="10" height="55" fill="#8B4513" />
+                <rect x="10" y="10" width="80" height="55" rx="3" fill="#1e1e1e" stroke="#ef4444" stroke-width="2"/>
+                <text x="50" y="32" fill="#ffffff" font-size="10" font-weight="bold" text-anchor="middle">RIGHT TO</text>
+                <text x="50" y="47" fill="#ef4444" font-size="11" font-weight="900" text-anchor="middle">PROTEST</text>
+            </svg>
+        </div>
+
+        <div class="ambient-item float-anim" style="top: 1150px; left: 2%; animation-delay: -1.5s;">
+            <svg width="120" height="70" viewBox="0 0 120 70">
+                <rect x="10" y="20" width="90" height="35" rx="4" fill="#1c1c1c" stroke="#555" stroke-width="2"/>
+                <path d="M70 20 L88 32 L88 55 L70 55 Z" fill="#2a2a2a"/>
+                <circle cx="30" cy="55" r="8" fill="#444" stroke="#fff" stroke-width="2"/>
+                <circle cx="80" cy="55" r="8" fill="#444" stroke="#fff" stroke-width="2"/>
+                <rect x="15" y="25" width="75" height="6" fill="#ef4444"/>
+                <text x="52" y="43" fill="#ffffff" font-size="8" font-weight="bold">POLICE</text>
+                <circle class="siren-light" cx="50" cy="16" r="4" fill="#ff0000"/>
+            </svg>
+        </div>
+
+        <div class="ambient-item float-anim" style="top: 1550px; left: 4%; animation-delay: -3s;">
+            <svg width="75" height="75" viewBox="0 0 100 100">
+                <path d="M20 40 L40 40 L70 20 L70 70 L40 50 L20 50 Z" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+                <path d="M30 50 L25 70 L35 70 L38 50 Z" fill="#666"/>
+                <path d="M75 30 C85 40, 85 50, 75 60" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <div class="ambient-item float-anim" style="top: 800px; right: 3%; animation-delay: -0.8s;">
+            <svg width="80" height="80" viewBox="0 0 100 100">
+                <rect x="10" y="45" width="80" height="8" rx="4" fill="#8B4513" stroke="#222" stroke-width="1" transform="rotate(45 50 50)"/>
+                <rect x="10" y="45" width="80" height="8" rx="4" fill="#654321" stroke="#222" stroke-width="1" transform="rotate(-45 50 50)"/>
+            </svg>
+        </div>
+
+        <div class="ambient-item float-anim" style="top: 1250px; right: 2%; animation-delay: -2.2s;">
+            <svg width="100" height="65" viewBox="0 0 100 65">
+                <rect x="10" y="15" width="80" height="12" fill="#ef4444" stroke="#fff" stroke-width="1"/>
+                <rect x="10" y="32" width="80" height="12" fill="#ef4444" stroke="#fff" stroke-width="1"/>
+                <line x1="20" y1="10" x2="20" y2="60" stroke="#aaa" stroke-width="4"/>
+                <line x1="80" y1="10" x2="80" y2="60" stroke="#aaa" stroke-width="4"/>
+                <text x="50" y="24" fill="#ffffff" font-size="7" font-weight="bold" text-anchor="middle">STOP - POLICE</text>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="container">
+
+        <!-- METRICS GRID linked to Google Sheets -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value" id="m-protesters">--</div>
+                <div class="metric-label">Estimated Protesters</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="m-damage">--</div>
+                <div class="metric-label">Public / State Damage</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="m-affected">--</div>
+                <div class="metric-label">Lives & Livelihoods Impacted</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="m-states">--</div>
+                <div class="metric-label">States & UTs Affected</div>
+            </div>
+            <div class="sync-status" id="sheet-sync-status">Sheet Sync: Connecting...</div>
+        </div>
+
+        <!-- GIS Interactive Hotspot Map -->
+        <div class="map-section">
+            <div class="section-header">
+                <h2>Interactive GIS Demonstration Epicenters</h2>
+                <p>Click on geographic markers to inspect regional movement data and open event archives</p>
+            </div>
+            <div id="leaflet-map"></div>
+        </div>
+
+        <!-- Chronological Timeline Section -->
+        <div class="section-header">
+            <h2>Chronological Protest Archive</h2>
+            <p>Select any event card to launch verified primary source reports and legal developments</p>
+        </div>
+
+        <div class="timeline" id="timeline-container">
+            <!-- Rendered dynamically via JavaScript -->
+        </div>
+    </div>
+
+    <!-- Modal Overlay Panel -->
+    <div class="overlay" id="overlay-panel" role="dialog" aria-modal="true">
+        <div class="overlay-card">
+            <button class="close-btn" id="close-modal" aria-label="Close overlay">&times;</button>
+            <div id="overlay-content"></div>
+        </div>
+    </div>
+
+    <!-- Tear Gas Trigger Button -->
+    <button id="tear-gas-btn" title="Deploy Tear Gas Simulation">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="margin-bottom: 3px;">
+            <path d="M12 2v6m0 0l-3-3m3 3l3-3M6 12a6 6 0 0012 0v6a2 2 0 01-2 2H8a2 2 0 01-2-2v-6z"/>
+        </svg>
+        <span>TEAR GAS</span>
+    </button>
+    <canvas id="gas-canvas"></canvas>
+
+    <script>
+        // =========================================================================
+        // 0. BARRICADE GATE 2-TAP MECHANISM
+        // =========================================================================
+        let tapCount = 0;
+        const barricadeBtn = document.getElementById('barricade-btn');
+        const gateText = document.getElementById('gate-text');
+        const gateScreen = document.getElementById('gate-screen');
+
+        function playImpactSound(intensity) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(intensity === 1 ? 90 : 160, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch (e) {}
+        }
+
+        function handleBarricadeTap() {
+            tapCount++;
+            
+            if (tapCount === 1) {
+                barricadeBtn.classList.add('crack-step-1');
+                gateText.innerText = "TAP AGAIN TO BREAK BARRICADE (1/2)";
+                playImpactSound(1);
+            } else if (tapCount >= 2) {
+                barricadeBtn.classList.remove('crack-step-1');
+                barricadeBtn.classList.add('crack-step-2');
+                gateText.innerText = "BARRICADE BREACHED";
+                playImpactSound(2);
+
+                setTimeout(() => {
+                    gateScreen.classList.add('opened');
+                    document.body.classList.remove('locked');
+                }, 450);
+            }
+        }
+
+        barricadeBtn.addEventListener('click', handleBarricadeTap);
+        barricadeBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleBarricadeTap();
+            }
+        });
+
+        // =========================================================================
+        // 1. HERO CANVASES & CROWD ANIMATION WITH SCROLL-FADE
+        // =========================================================================
+        const heroCanvas = document.getElementById('hero-canvas');
+        const heroCtx = heroCanvas.getContext('2d');
+        let crowdParticles = [];
+
+        function resizeHeroCanvas() {
+            heroCanvas.width = heroCanvas.parentElement.clientWidth;
+            heroCanvas.height = heroCanvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeHeroCanvas);
+        resizeHeroCanvas();
+
+        class CrowdSilhouettes {
+            constructor() {
+                this.x = Math.random() * heroCanvas.width;
+                this.y = heroCanvas.height - Math.random() * 80;
+                this.height = Math.random() * 40 + 30;
+                this.width = Math.random() * 15 + 10;
+                this.speedX = (Math.random() - 0.5) * 0.8;
+                this.banner = Math.random() > 0.6;
+            }
+            update() {
+                this.x += this.speedX;
+                if (this.x < 0) this.x = heroCanvas.width;
+                if (this.x > heroCanvas.width) this.x = 0;
+            }
+            draw() {
+                heroCtx.save();
+                heroCtx.fillStyle = '#ef4444';
+                heroCtx.globalAlpha = 0.25;
+
+                heroCtx.beginPath();
+                heroCtx.arc(this.x, this.y - this.height, this.width / 2, 0, Math.PI * 2);
+                heroCtx.fill();
+
+                heroCtx.beginPath();
+                heroCtx.rect(this.x - this.width / 2, this.y - this.height + 5, this.width, this.height);
+                heroCtx.fill();
+
+                if (this.banner) {
+                    heroCtx.strokeStyle = '#ef4444';
+                    heroCtx.lineWidth = 2;
+                    heroCtx.beginPath();
+                    heroCtx.moveTo(this.x, this.y - this.height);
+                    heroCtx.lineTo(this.x, this.y - this.height - 25);
+                    heroCtx.stroke();
+
+                    heroCtx.fillRect(this.x - 15, this.y - this.height - 40, 30, 15);
+                }
+                heroCtx.restore();
+            }
+        }
+
+        for (let i = 0; i < 70; i++) crowdParticles.push(new CrowdSilhouettes());
+
+        function animateHeroCrowd() {
+            heroCtx.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+            crowdParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animateHeroCrowd);
+        }
+        animateHeroCrowd();
+
+        window.addEventListener('scroll', () => {
+            const scrollPos = window.scrollY;
+            const heroHeight = document.querySelector('.hero-container').clientHeight;
+            let opacity = 1 - (scrollPos / (heroHeight * 0.8));
+            opacity = Math.max(0, Math.min(1, opacity));
+            heroCanvas.style.opacity = opacity;
+        });
+
+        // =========================================================================
+        // 2. GOOGLE SHEETS LIVE SYNC ENGINE
+        // =========================================================================
+        const GOOGLE_SHEET_ID = "1hRbz_4o3EATcCBggDNwaveHrQhgmNmwUEnlWz7WAkNs";
+        const GOOGLE_SHEET_GID = "1485115556";
+
+        window.handleSheetData = function(response) {
+            try {
+                if (!response || !response.table || !response.table.rows) {
+                    throw new Error("Invalid sheet structure or restricted access");
+                }
+                
+                const rows = response.table.rows;
+                const getVal = (idx) => {
+                    if (rows[idx] && rows[idx].c && rows[idx].c[1]) {
+                        const cell = rows[idx].c[1];
+                        return (cell.f !== undefined && cell.f !== null) ? cell.f : cell.v;
+                    }
+                    return null;
+                };
+
+                const valProtesters = getVal(1);
+                const valDamage     = getVal(2);
+                const valAffected   = getVal(3);
+                const valStates     = getVal(4);
+
+                if (valProtesters !== null) document.getElementById('m-protesters').innerText = valProtesters;
+                if (valDamage !== null)     document.getElementById('m-damage').innerText     = valDamage;
+                if (valAffected !== null)   document.getElementById('m-affected').innerText   = valAffected;
+                if (valStates !== null)     document.getElementById('m-states').innerText     = valStates;
+
+                const statusEl = document.getElementById('sheet-sync-status');
+                statusEl.innerText = "Sheet Sync: Live (Updated from Google Sheet)";
+                statusEl.style.color = "#10b981";
+            } catch (err) {
+                console.error("Sheet parsing error:", err);
+                showErrorStatus();
+            }
+        };
+
+        function showErrorStatus() {
+            const statusEl = document.getElementById('sheet-sync-status');
+            statusEl.innerText = "Sheet Sync: Failed to load tab data";
+            statusEl.style.color = "#ef4444";
+        }
+
+        function syncGoogleSheetMetrics() {
+            if (!GOOGLE_SHEET_ID) return;
+
+            const script = document.createElement('script');
+            const gvizUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=responseHandler:handleSheetData&gid=${GOOGLE_SHEET_GID}&_=${Date.now()}`;
+            
+            script.src = gvizUrl;
+            script.onerror = function() { showErrorStatus(); };
+            document.body.appendChild(script);
+        }
+
+        syncGoogleSheetMetrics();
+
+        // =========================================================================
+        // 3. COMPREHENSIVE PROTEST DATASET (2020 - 2026)
+        // =========================================================================
+        const protestData = [
+            {
+                id: "caa-nrc",
+                name: "Citizenship Amendment Act (CAA) Protests",
+                date: "Dec 2019 – Mar 2020",
+                location: "Shaheen Bagh (Delhi), Assam, Nationwide",
+                coordinates: [28.536, 77.293],
+                summary: "Sustained sit-in demonstrations protesting the passage of the Citizenship Amendment Act, 2019.",
+                bullets: [
+                    "Led primarily by local women sit-ins at Shaheen Bagh, establishing a non-violent blockading model.",
+                    "Protesters cited concerns over constitutional secularism and potential integration with the National Register of Citizens (NRC).",
+                    "Demonstrations suspended in March 2020 due to strict COVID-19 pandemic lockdown enforcement."
+                ],
+                scale: "Multi-city participation (Delhi, Mumbai, Bengaluru, Assam).",
+                outcomes: "Rules for CAA officially notified later in March 2024.",
+                photo: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Photo via The Hindu / Public Domain Archival reporting",
+                link: "https://www.thehindu.com"
+            },
+            {
+                id: "farmers-2020",
+                name: "Indian Farmers' Movement",
+                date: "Nov 2020 – Dec 2021",
+                location: "Singhu, Tikri, Ghazipur Borders (NCR)",
+                coordinates: [28.847, 77.130],
+                summary: "A year-long blockade of Delhi borders by agricultural unions protesting three farm deregulation bills passed by Parliament.",
+                bullets: [
+                    "Demanded complete repeal of the three farm laws and statutory guarantee for Minimum Support Price (MSP).",
+                    "Maintained organized encampments featuring community kitchens (langars), medical camps, and internal media units.",
+                    "Involved over 11 rounds of negotiations between farmer representatives and the Union Government."
+                ],
+                scale: "Estimated hundreds of thousands of active camp residents at peak.",
+                outcomes: "Parliament officially repealed all three farm laws in November 2021.",
+                photo: "https://images.unsplash.com/photo-1595278069441-2cf29f8005a4?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "BBC News Archival Coverage",
+                link: "https://www.bbc.com"
+            },
+            {
+                id: "rrb-ntpc-2022",
+                name: "RRB-NTPC Student Protests",
+                date: "Jan 2022",
+                location: "Patna, Gaya (Bihar), Prayagraj (UP)",
+                coordinates: [25.594, 85.137],
+                summary: "Mass student demonstrations against alleged irregularities and multi-stage screening changes in Railway Recruitment Board examinations.",
+                bullets: [
+                    "Students blocked railway tracks across major junctions in Bihar and Uttar Pradesh.",
+                    "Protested against two-tier examination criteria introduced for non-technical popular categories.",
+                    "Ministry of Railways constituted a high-power committee to review student grievances."
+                ],
+                scale: "Widespread student rallies in 12+ districts across East India.",
+                outcomes: "Railways suspended CBT-2 exam and revised screening policy in favor of student demands.",
+                photo: "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Indian Express Archival Reporting",
+                link: "https://indianexpress.com"
+            },
+            {
+                id: "agniveer-2022",
+                name: "Agnipath Scheme Protests",
+                date: "June 2022",
+                location: "Bihar, Uttar Pradesh, Telangana",
+                coordinates: [24.795, 84.999],
+                summary: "Widespread youth-led protests targeting the introduced 'Agnipath' short-term military recruitment model.",
+                bullets: [
+                    "Protesters raised concerns over job security, lack of pensions, and four-year tenure limits for recruits.",
+                    "Railway services were significantly interrupted across eastern states due to track blockades.",
+                    "Government issued concessions including upper-age limit relaxations for the initial intake year."
+                ],
+                scale: "State-wide disruptions across 8+ states.",
+                outcomes: "Scheme was implemented as planned; age relaxations granted for initial 2022 batch.",
+                photo: "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Indian Express Reporting",
+                link: "https://indianexpress.com"
+            },
+            {
+                id: "wrestlers-2023",
+                name: "Indian Wrestlers' Protest",
+                date: "Jan 2023 – May 2023",
+                location: "Jantar Mantar (New Delhi)",
+                coordinates: [28.627, 77.216],
+                summary: "Sit-in demonstrations led by Olympic medalist wrestlers demanding accountability and legal action against wrestling federation officials.",
+                bullets: [
+                    "Prominent athletes Sakshi Malik, Vinesh Phogat, and Bajrang Punia led public encampments.",
+                    "Demanded safety reforms and formal police investigations under the POCSO Act.",
+                    "Delhi Police registered formal chargesheets following Supreme Court interventions."
+                ],
+                scale: "Sustained national media focus and civil society support marches.",
+                outcomes: "Court proceedings initiated; administrative oversight panel constituted for WFI.",
+                photo: "https://images.unsplash.com/photo-1575320181282-9afab399332c?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Newslaundry Coverage",
+                link: "https://www.newslaundry.com"
+            },
+            {
+                id: "manipur-2023",
+                name: "Manipur Civil & Community Rallies",
+                date: "May 2023 – 2024",
+                location: "Imphal, Churachandpur (Manipur)",
+                coordinates: [24.817, 93.936],
+                summary: "Large-scale civil marches and community demonstrations following ethnic security escalation and internet shutdowns.",
+                bullets: [
+                    "Triggered by Tribal Solidarity Marches protesting high court recommendations regarding affirmative action lists.",
+                    "Led to prolonged internet suspensions, curfews, and deployment of central armed police forces.",
+                    "Supreme Court appointed an all-women judicial panel to oversee relief and rehabilitation."
+                ],
+                scale: "State-wide displacement and continuous civil oversight rallies.",
+                outcomes: "Supreme Court-directed relief committees established; ongoing peace talks.",
+                photo: "https://images.unsplash.com/photo-1575320181282-9afab399332c?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "The Hindu Archival Desk",
+                link: "https://www.thehindu.com"
+            },
+            {
+                id: "truckers-2024",
+                name: "Hit-and-Run Law Transport Strike",
+                date: "Jan 2024",
+                location: "Pan-India (Highways, Fuel Outlets)",
+                coordinates: [19.076, 72.877],
+                summary: "Nationwide strike by commercial truck, bus, and tanker drivers protesting stringent hit-and-run penalties under the Bharatiya Nyaya Sanhita (BNS).",
+                bullets: [
+                    "Protested Section 106(2) of the BNS prescribing up to 10 years imprisonment for fleeing crash scenes without reporting.",
+                    "Triggered temporary fuel supply disruptions and long queues at petrol pumps nationwide.",
+                    "Union Home Ministry assured transport bodies that new provisions would be reviewed prior to enforcement."
+                ],
+                scale: "Multi-state freight transportation stoppage.",
+                outcomes: "Government held enforcement in abeyance pending consultations with transport unions.",
+                photo: "https://images.unsplash.com/photo-1595278069441-2cf29f8005a4?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "BBC News Coverage",
+                link: "https://www.bbc.com"
+            },
+            {
+                id: "farmers-2024",
+                name: "Farmers' Movement 2.0 (Dilli Chalo)",
+                date: "Feb 2024 – Mar 2024",
+                location: "Shambhu & Khanauri Borders (Punjab-Haryana)",
+                coordinates: [30.400, 76.800],
+                summary: "Resumed marches by Samyukta Kisan Morcha (Non-Political) and Kisan Mazdoor Morcha demanding legal MSP guarantees.",
+                bullets: [
+                    "Farmers gathered at Haryana borders with heavy tractors and modified earthmovers.",
+                    "Demanded statutory Minimum Support Price guarantees based on the Swaminathan Commission formula.",
+                    "State authorities deployed concrete barricades, tear gas drones, and multi-tier security wire fencing."
+                ],
+                scale: "Thousands of tractors camped along national highway borders.",
+                outcomes: "Union Ministers held multiple rounds of talks offering 5-year crop contract proposals.",
+                photo: "https://images.unsplash.com/photo-1595278069441-2cf29f8005a4?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Indian Express Desk",
+                link: "https://indianexpress.com"
+            },
+            {
+                id: "doctors-2024",
+                name: "RG Kar Medical College Strike & Safety Protests",
+                date: "Aug 2024 – Sep 2024",
+                location: "Kolkata (West Bengal), Nationwide",
+                coordinates: [22.572, 88.363],
+                summary: "Nationwide strikes by resident doctors and civil society following the assault and death of a doctor on duty.",
+                bullets: [
+                    "Demanded central legislation for healthcare worker protection and enhanced hospital security measures.",
+                    "Led to widespread non-emergency medical service stoppages across major government institutions.",
+                    "Supreme Court of India took suo motu cognizance, ordering the establishment of a National Task Force."
+                ],
+                scale: "Pan-India medical professional participation.",
+                outcomes: "Supreme Court-directed safety measures instituted; state administrative reshuffles.",
+                photo: "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Newslaundry Desk",
+                link: "https://www.newslaundry.com"
+            },
+            {
+                id: "cjp-2026",
+                name: "Cockroach Janta Party (CJP) & Gen-Z Student Movement",
+                date: "June 2026 – July 2026",
+                location: "Jantar Mantar (New Delhi), Multi-state",
+                coordinates: [28.613, 77.209],
+                summary: "A youth and student movement initiated over examination paper leaks (NEET/CBSE) and public remarks, escalating into sustained sit-ins and the 'Sansad Chalo' march.",
+                bullets: [
+                    "Launched as a satirical youth platform in response to public remarks regarding unemployed youth.",
+                    "Mobilized Gen-Z students demanding systemic examination reforms following 2026 NEET-UG paper leaks.",
+                    "Organized multi-week sit-ins at Jantar Mantar and the July 20 'Sansad Chalo' march."
+                ],
+                scale: "Tens of thousands of active student demonstrators across northern states.",
+                outcomes: "Union Education Minister Dharmendra Pradhan resigned on July 25, 2026; government initiated talks on exam leak prevention.",
+                photo: "https://images.unsplash.com/photo-1575320181282-9afab399332c?auto=format&fit=crop&w=800&q=80",
+                photoCredit: "Newslaundry / Indian Express Archival Reporting",
+                link: "https://www.newslaundry.com"
+            }
+        ];
+
+        // Render Timeline Nodes
+        const timelineEl = document.getElementById('timeline-container');
+        protestData.forEach((item, idx) => {
+            const side = idx % 2 === 0 ? 'left' : 'right';
+            const nodeHtml = `
+                <div class="timeline-item ${side}" id="timeline-${item.id}" onclick="openOverlay('${item.id}')" tabindex="0" role="button" aria-label="${item.name}">
+                    <div class="timeline-node"></div>
+                    <div class="timeline-card">
+                        <span class="date-badge">${item.date}</span>
+                        <h3>${item.name}</h3>
+                        <div class="location-text">${item.location}</div>
+                        <p style="font-size: 0.88rem; color: #ccc;">${item.summary}</p>
+                    </div>
+                </div>
+            `;
+            timelineEl.insertAdjacentHTML('beforeend', nodeHtml);
+        });
+
+        // Overlay Modal Logic
+        const overlay = document.getElementById('overlay-panel');
+        const overlayContent = document.getElementById('overlay-content');
+        
+        function openOverlay(id) {
+            const item = protestData.find(p => p.id === id);
+            if (!item) return;
+
+            overlayContent.innerHTML = `
+                <span class="date-badge">${item.date}</span>
+                <h2 style="color: #ffffff; margin-top: 6px;">${item.name}</h2>
+                <div class="location-text" style="font-size: 0.95rem; margin-top: 2px;">Primary Locations: ${item.location}</div>
+                
+                <img src="${item.photo}" class="overlay-image" alt="${item.name}">
+                <div class="caption">${item.photoCredit}</div>
+
+                <div class="overlay-body">
+                    <p style="color: #e5e7eb;"><strong>Overview:</strong> ${item.summary}</p>
+                    
+                    <h4>Key Verified Points</h4>
+                    <ul>
+                        ${item.bullets.map(b => `<li style="color: #d1d5db;">${b}</li>`).join('')}
+                    </ul>
+
+                    ${item.scale ? `<p style="margin-top:10px; color: #e5e7eb;"><strong>Reported Scale:</strong> ${item.scale}</p>` : ''}
+                    <p style="margin-top:6px; color: #e5e7eb;"><strong>Outcomes & Legal Status:</strong> ${item.outcomes}</p>
+                    
+                    <a href="${item.link}" target="_blank" rel="noopener" class="source-link">Read Primary Coverage Source &rarr;</a>
+                </div>
+            `;
+            overlay.classList.add('active');
+        }
+
+        document.getElementById('close-modal').addEventListener('click', closeOverlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOverlay(); });
+
+        function closeOverlay() { overlay.classList.remove('active'); }
+
+        // =========================================================================
+        // 4. LEAFLET INTERACTIVE GIS MAP INITIALIZATION
+        // =========================================================================
+        const map = L.map('leaflet-map').setView([22.5937, 78.9629], 5);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 18
+        }).addTo(map);
+
+        protestData.forEach(item => {
+            if (item.coordinates) {
+                const circleMarker = L.circleMarker(item.coordinates, {
+                    radius: 9,
+                    fillColor: "#ef4444",
+                    color: "#ffffff",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.85
+                }).addTo(map);
+
+                const popupHtml = `
+                    <div style="font-family: sans-serif;">
+                        <strong style="color:#ef4444; font-size:0.95rem;">${item.name}</strong><br>
+                        <span style="font-size:0.75rem; color:#aaa;">${item.date}</span>
+                        <p style="font-size:0.8rem; margin-top:4px; color:#ddd;">${item.location}</p>
+                        <button class="map-popup-btn" onclick="openOverlay('${item.id}')">View Full Archive entry &rarr;</button>
+                    </div>
+                `;
+                circleMarker.bindPopup(popupHtml);
+            }
+        });
+
+        // =========================================================================
+        // 5. TEAR GAS ENGINE & AUDIO SYNTHESIS
+        // =========================================================================
+        const canvas = document.getElementById('gas-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class GasParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 30 + 12;
+                this.speedX = (Math.random() - 0.5) * 10;
+                this.speedY = (Math.random() - 0.5) * 10;
+                this.alpha = 1;
+                this.type = Math.random() > 0.25 ? 'smoke' : 'droplet';
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.alpha -= 0.01;
+                if (this.size < 70 && this.type === 'smoke') this.size += 0.5;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                if (this.type === 'smoke') {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.quadraticCurveTo(this.x - 6, this.y + 12, this.x, this.y + 18);
+                    ctx.quadraticCurveTo(this.x + 6, this.y + 12, this.x, this.y);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        function triggerTearGas() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(130, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.35);
+            } catch (e) {}
+
+            const btnRect = document.getElementById('tear-gas-btn').getBoundingClientRect();
+            const startX = btnRect.left;
+            const startY = btnRect.top + 20;
+            for (let i = 0; i < 85; i++) particles.push(new GasParticle(startX, startY));
+        }
+
+        function animateGas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach((p, idx) => {
+                p.update();
+                p.draw();
+                if (p.alpha <= 0) particles.splice(idx, 1);
+            });
+            requestAnimationFrame(animateGas);
+        }
+        animateGas();
+
+        document.getElementById('tear-gas-btn').addEventListener('click', triggerTearGas);
+    </script>
+</body>
+</html>
